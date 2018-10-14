@@ -77,6 +77,10 @@ object Lexer extends Pipeline[List[File], Stream[Token]] {
         def dropComment(stream1: Stream[Input]): Stream[Input] = {
           val (c1, p) #:: rest1 = stream1.dropWhile{ case (c, _) => c != '*' && c != EndOfFile }
           if (rest1.head._1 == '/') rest1
+          else if (c1 == EndOfFile) {
+            error("Unclosed error", currentPos)
+            rest1
+          }
           else dropComment(rest1)
         }
         nextToken(dropComment(rest))
@@ -140,7 +144,11 @@ object Lexer extends Pipeline[List[File], Stream[Token]] {
           }
           val strLiteral = stringLetters.map(_._1).mkString
           
-          (STRINGLIT(strLiteral).setPos(currentPos), afterString.tail)
+          if (afterString.isEmpty) {
+            error("Unclosed String literal", currentPos)
+            (BAD().setPos(currentPos), afterString)
+          }
+          else (STRINGLIT(strLiteral).setPos(currentPos), afterString.tail)
           
         case ';' =>
           useOne(SEMICOLON())
