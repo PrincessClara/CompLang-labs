@@ -70,18 +70,16 @@ object Lexer extends Pipeline[List[File], Stream[Token]] {
         nextToken(stream.dropWhile{ case (c, _) => Character.isWhitespace(c) } )
       } else if (currentChar == '/' && nextChar == '/') {
         // Single-line comment
-        //TODO Handle errors girl
-        nextToken(stream.dropWhile{ case (c, _) => c == '\n' || c == '\r' } )
+        nextToken(stream.dropWhile{ case (c, _) => c != '\n' && c != '\r' && c != EndOfFile} )
       } else if (currentChar == '/' && nextChar == '*') {
         // Multi-line comment
-        //TODO Handle errors girl
         @scala.annotation.tailrec
         def dropComment(stream1: Stream[Input]): Stream[Input] = {
-          val (c, p) #:: rest1 = stream1.dropWhile{ case (c, _) => c == '*' }
-          if (c == '/') rest1
-          else dropComment((c,p) #:: rest1)
+          val (c1, p) #:: rest1 = stream1.dropWhile{ case (c, _) => c != '*' && c != EndOfFile }
+          if (rest1.head._1 == '/') rest1
+          else dropComment(rest1)
         }
-        nextToken(dropComment(stream))
+        nextToken(dropComment(rest))
       } else {
         readToken(stream)
       }
@@ -137,10 +135,10 @@ object Lexer extends Pipeline[List[File], Stream[Token]] {
 
         // String literal
         case '"' =>
-          val (stringLetters, afterString) = stream.span { case (ch, _) =>
+          val (stringLetters, afterString) = rest.span { case (ch, _) =>
             ch != '"'
           }
-          val strLiteral = stringLetters.tail.map(_._1).mkString
+          val strLiteral = stringLetters.map(_._1).mkString
           
           (STRINGLIT(strLiteral).setPos(currentPos), afterString.tail)
           
