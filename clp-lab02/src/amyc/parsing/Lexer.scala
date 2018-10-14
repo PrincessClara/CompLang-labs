@@ -70,10 +70,18 @@ object Lexer extends Pipeline[List[File], Stream[Token]] {
         nextToken(stream.dropWhile{ case (c, _) => Character.isWhitespace(c) } )
       } else if (currentChar == '/' && nextChar == '/') {
         // Single-line comment
-        ???  // TODO
+        //TODO Handle errors girl
+        nextToken(stream.dropWhile{ case (c, _) => c == '\n' || c == '\r' } )
       } else if (currentChar == '/' && nextChar == '*') {
         // Multi-line comment
-        ???  // TODO
+        //TODO Handle errors girl
+        @scala.annotation.tailrec
+        def dropComment(stream1: Stream[Input]): Stream[Input] = {
+          val (c, p) #:: rest1 = stream1.dropWhile{ case (c, _) => c == '*' }
+          if (c == '/') rest1
+          else dropComment((c,p) #:: rest1)
+        }
+        nextToken(dropComment(stream))
       } else {
         readToken(stream)
       }
