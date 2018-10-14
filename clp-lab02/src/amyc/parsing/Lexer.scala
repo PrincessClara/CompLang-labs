@@ -143,11 +143,57 @@ object Lexer extends Pipeline[List[File], Stream[Token]] {
           val strLiteral = stringLetters.tail.map(_._1).mkString
           
           (STRINGLIT(strLiteral).setPos(currentPos), afterString.tail)
+          
+        case ';' =>
+          useOne(SEMICOLON())
+        case '+' if nextChar == '+' =>
+          useTwo(CONCAT())
+        case '+' =>
+          useOne(PLUS())
+        case '-' =>
+          useOne(MINUS())
+        case '*' =>
+          useOne(TIMES())
+        case '/' =>
+          useOne(DIV())
+        case '%' =>
+          useOne(MOD())
+        case '<' if nextChar == '=' =>
+          useTwo(LESSEQUALS())
+        case '<' =>
+          useOne(LESSTHAN())
+        case '&' if nextChar == '&' =>
+          useTwo(AND())
+        case '|' if nextChar == '|' =>
+          useTwo(OR())
+        case '=' if nextChar == '=' =>
+          useTwo(EQUALS())
+        case '=' if nextChar == '>' =>
+          useTwo(RARROW())
+        case '=' =>
+          useOne(EQSIGN())
+        case '!' =>
+          useOne(BANG())
+        case '{' =>
+          useOne(LBRACE())
+        case '}' =>
+          useOne(RBRACE())
+        case '(' =>
+          useOne(LPAREN())
+        case ')' =>
+          useOne(RPAREN())
+        case ',' =>
+          useOne(COMMA())
+        case ':' =>
+          useOne(COLON())
+        case '.' =>
+          useOne(DOT())
+        case '_' =>
+          useOne(UNDERSCORE())
 
         case _ =>
-          ???  // TODO: Replace this catch-all by additional cases for other tokens
-               // (You can look at Tokens.scala for an exhaustive list of tokens)
-               // There should also be a case for all remaining (invalid) characters in the end
+          error("Invalid token", currentPos)
+          (BAD().setPos(currentPos), rest)
       }
     }
 
