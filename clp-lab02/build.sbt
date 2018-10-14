@@ -7,6 +7,7 @@ lazy val amyc = (project in file("."))
     version := "1.5",
     organization := "ch.epfl.lara",
     scalaVersion := "2.12.3",
+    cancelable in Global := true,
 
     scalaSource in Compile := baseDirectory.value / "src",
     scalacOptions ++= Seq("-feature"),
