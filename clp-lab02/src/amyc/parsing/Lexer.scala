@@ -115,17 +115,34 @@ object Lexer extends Pipeline[List[File], Stream[Token]] {
           // Hint: Decide if it's a letter or reserved word (use our infrastructure!),
           // and return the correct token, along with the remaining input stream.
           // Make sure you set the correct position for the token.
-          ???  // TODO
+          val token = keywords(word)
+          if (token == None) (ID(word).setPos(currentPos), afterWord)
+          else (token.get.setPos(currentPos), afterWord)
 
         // Int literal
         case _ if Character.isDigit(currentChar) =>
           // Hint: Use a strategy similar to the previous example.
           // Make sure you fail for integers that do not fit 32 bits.
-          ???  // TODO
+          val (digits, afterNumber) = stream.span { case (ch, _) =>
+            Character.isDigit(ch)
+          }
+          val numberString = digits.map(_._1).mkString
+          
+          val number: BigInt = BigInt(numberString)
+          if (number.isValidInt) (INTLIT(number.toInt).setPos(currentPos), afterNumber)
+          else {
+            error("Integer value is too big (overflow)", currentPos)
+            (BAD().setPos(currentPos), afterNumber)
+          }
 
         // String literal
         case '"' =>
-          ???  // TODO
+          val (stringLetters, afterString) = stream.span { case (ch, _) =>
+            ch != '"'
+          }
+          val strLiteral = stringLetters.tail.map(_._1).mkString
+          
+          (STRINGLIT(strLiteral).setPos(currentPos), afterString.tail)
 
         case _ =>
           ???  // TODO: Replace this catch-all by additional cases for other tokens
