@@ -70,23 +70,26 @@ object Lexer extends Pipeline[List[File], Stream[Token]] {
         nextToken(stream.dropWhile{ case (c, _) => Character.isWhitespace(c) } )
       } else if (currentChar == '/' && nextChar == '/') {
         // Single-line comment
-        nextToken(stream.dropWhile{ case (c, _) => c != '\n' && c != '\r' && c != EndOfFile} )
+        val endComment = stream.dropWhile { case (c, _) => c != '\n' && c != '\r' && c != EndOfFile }
+        if (endComment.head._1 == EndOfFile) readToken(endComment)
+        else nextToken(endComment.tail)
       } else if (currentChar == '/' && nextChar == '*') {
         // Multi-line comment
-        @scala.annotation.tailrec
-        def dropComment(stream1: Stream[Input]): Stream[Input] = {
-          val (c1, p) #:: rest1 = stream1.dropWhile{ case (c, _) => c != '*' && c != EndOfFile }
-          if (rest1.head._1 == '/') rest1
-          else if (c1 == EndOfFile) {
-            error("Unclosed error", currentPos)
-            rest1
-          }
-          else dropComment(rest1)
+        def dropComment(s: Stream[Input]): Option[Stream[Input]] = {
+          val (ch, p) #:: rest1 = s.dropWhile { case (c, _) => c != '*' && c != EndOfFile }
+          if (ch == EndOfFile) None 
+          else if (rest1.head._1 == '/') {
+            //case where multiple line comment has ended
+            Some(rest1.tail)
+          } else dropComment(rest1)
         }
-        nextToken(dropComment(rest))
-      } else {
-        readToken(stream)
-      }
+        
+        val afterComment = dropComment(rest.tail)
+        if (afterComment == None) {
+          fatal("End of file occured in a multiple line comment")
+          (BAD().setPos(currentPos), Stream())
+        } else nextToken(afterComment.get)
+      } else readToken(stream)
     }
 
     /** Reads the next token from the stream. Assumes no whitespace or comments at the beginning.
@@ -140,15 +143,17 @@ object Lexer extends Pipeline[List[File], Stream[Token]] {
         // String literal
         case '"' =>
           val (stringLetters, afterString) = rest.span { case (ch, _) =>
-            ch != '"'
+            ch != '"' && ch != '\n' && ch != '\r' && ch != EndOfFile
           }
-          val strLiteral = stringLetters.map(_._1).mkString
           
-          if (afterString.isEmpty) {
+          if (afterString.head._1 != '"') {
             error("Unclosed String literal", currentPos)
             (BAD().setPos(currentPos), afterString)
           }
-          else (STRINGLIT(strLiteral).setPos(currentPos), afterString.tail)
+          else {
+            val strLiteral = stringLetters.map(_._1).mkString
+            (STRINGLIT(strLiteral).setPos(currentPos), afterString.tail)
+          }
           
         case ';' =>
           useOne(SEMICOLON())
