@@ -156,8 +156,9 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
               }
               (S.LiteralPattern(sLit), List())
             case N.CaseClassPattern(constr, args) =>
+              val mod = constr.module.getOrElse(module)
               val name = constr.name
-              table.getConstructor(module, name) match {
+              table.getConstructor(mod, name) match {
                 case Some((t,sig)) => 
                   val (sArgs, l) = args.map(transformPattern).unzip
                   (S.CaseClassPattern(t, sArgs), l.flatten)
@@ -169,13 +170,47 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
           def transformCase(cse: N.MatchCase) = {
             val N.MatchCase(pat, rhs) = cse
             val (newPat, moreLocals) = transformPattern(pat)
-            ???  // TODO
+            S.MatchCase(newPat, transformExpr(rhs)(module, (params, moreLocals.toMap ++ locals)))
           }
 
           S.Match(transformExpr(scrut), cases.map(transformCase))
 
-        case _ =>
-          ???  // TODO: Implement the rest of the cases
+        case N.Variable(name) => 
+          locals.get(name) match {
+            case None => params.get(name) match {
+              case None => fatal(s"Variable $name not valid", expr.position)
+              case Some(id) => S.Variable(id)
+            }
+            case Some(id) => S.Variable(id)
+          }
+        case N.Plus(l, r) => S.Plus(transformExpr(l), transformExpr(r))
+        case N.Minus(l, r) => S.Plus(transformExpr(l), transformExpr(r))
+        case N.Times(l, r) => S.Plus(transformExpr(l), transformExpr(r))
+        case N.Mod(l, r) => S.Mod(transformExpr(l), transformExpr(l))
+        case N.LessThan(l, r) => S.LessThan(transformExpr(l), transformExpr(l))
+        case N.LessEquals(l, r) => S.LessEquals(transformExpr(l), transformExpr(l))
+        case N.And(l, r) => S.And(transformExpr(l), transformExpr(l))
+        case N.Or(l, r) => S.Or(transformExpr(l), transformExpr(l))
+        case N.Equals(l, r) => S.Equals(transformExpr(l), transformExpr(l))
+        case N.Concat(l, r) => S.Concat(transformExpr(l), transformExpr(l))
+        case N.Not(e) => S.Not(transformExpr(e))
+        case N.Neg(e) => S.Neg(transformExpr(e))
+        case N.Call(qn, args) => 
+          val name = qn.name
+          val func = table.getFunction(qn.module.getOrElse(module), name) 
+          val sQn = func.getOrElse(fatal(s"Function $name is not valid", expr.position)) 
+          S.Call(sQn._1, args.map(transformExpr))
+        case N.Sequence(e1,e2) => S.Sequence(transformExpr(e1), transformExpr(e2))
+        case N.Let(df, value, body) =>
+          val name = df.name
+          if(locals.contains(name))
+            fatal(s"Name $name not valid", expr.position)
+          val id = Identifier.fresh(df.name)
+          val sDf = S.ParamDef(id, S.TypeTree(transformType(df.tt, module)))
+          S.Let(sDf, transformExpr(value), transformExpr(body)(module, (params, Map(df.name -> id) ++ locals)))
+        case N.Ite(cond, thenn, elze) => S.Ite(transformExpr(cond), transformExpr(thenn), transformExpr(elze))
+        case N.Error(msg) => S.Error(transformExpr(msg))
+        
       }
       res.setPos(expr)
     }
