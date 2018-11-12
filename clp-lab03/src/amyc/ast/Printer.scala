@@ -91,7 +91,7 @@ trait Printer {
       case Sequence(lhs, rhs) =>
         val main = Stacked(
           rec(lhs, false) <:> ";",
-          rec(rhs, false),
+          rec(rhs, false)
         )
         if (parens) {
           Stacked(
