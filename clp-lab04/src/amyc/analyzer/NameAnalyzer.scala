@@ -46,13 +46,38 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
     }
 
     // Step 2: Check name uniqueness of definitions in each module
-    // TODO
+    var definitions : List[(N.ClassOrFunDef, String)] = List()
+    modNames.foreach { case (name, module) =>
+      val defNames = module.head.defs.groupBy(_.name)
+      defNames.foreach { case (name, defs) =>
+        val mod = module.head.name
+        if (defs.size > 1) {
+          fatal(s"Two definitions named $name in module $mod", defs.head.position)
+        }
+        definitions = (defs.head, mod) :: definitions
+      }
+    }
 
-    // Step 3: Discover types and add them to symbol table
-    // TODO
-
-    // Step 4: Discover type constructors, add them to table
-    // TODO
+    for(d <- definitions) {
+      d match { 
+        // Step 3: Discover types and add them to symbol table
+        case (N.AbstractClassDef(name), mod) => table.addType(mod, name)
+        // Step 4: Discover type constructors, add them to table
+        case (N.CaseClassDef(name, fields, parent), mod) => 
+          table.getType(mod, parent) match {
+            case Some(id) =>
+              val sFields : List[S.Type]= fields.map(transformType(_, mod))
+              table.addConstructor(mod, name, sFields, id)
+            case None =>
+              fatal(s"Parent name not valid in case class definition $name", d._1.position)
+          }
+        // Step 5: Discover functions signatures, add them to table
+        case (N.FunDef(name, params, retType, _), mod) =>
+          val sArgs = params.map{x => transformType(x.tt, mod)}
+          val sRet = transformType(retType, mod)
+          table.addFunction(mod, name, sArgs, sRet)
+      }
+    }
 
     // Step 5: Discover functions signatures, add them to table
     // TODO
