@@ -79,9 +79,6 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
       }
     }
 
-    // Step 5: Discover functions signatures, add them to table
-    // TODO
-
     // Step 6: We now know all definitions in the program.
     //         Reconstruct modules and analyse function bodies/ expressions
     
@@ -92,9 +89,14 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
 
     def transformDef(df: N.ClassOrFunDef, module: String): S.ClassOrFunDef = { df match {
       case N.AbstractClassDef(name) =>
-        ???  // TODO
+        val Some(t) = table.getType(module, name) 
+        S.AbstractClassDef(t)
       case N.CaseClassDef(name, _, _) =>
-        ???  // TODO
+        val N.CaseClassDef(_, fields, parent) = df
+        val Some((sym, sig)) = table.getConstructor(module, name)
+        val Some(t) = table.getType(module, parent)
+        val sFields = fields.map(x => S.TypeTree(transformType(x, module)))
+        S.CaseClassDef(sym, sFields, t)
       case fd: N.FunDef =>
         transformFunDef(fd, module)
     }}.setPos(df)
@@ -138,8 +140,30 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
           // Returns a transformed pattern along with all bindings
           // from strings to unique identifiers for names bound in the pattern.
           // Also, calls 'fatal' if a new name violates the Amy naming rules.
-          def transformPattern(pat: N.Pattern): (S.Pattern, List[(String, Identifier)]) = {
-            ???  // TODO
+          def transformPattern(pat: N.Pattern): (S.Pattern, List[(String, Identifier)]) = pat match {
+            case N.WildcardPattern() => (S.WildcardPattern(), List())
+            case N.IdPattern(name) => 
+              if (params.contains(name) || locals.contains(name))
+                fatal(s"Name $name not valid", expr.position)
+              val id = Identifier.fresh(name)
+              (S.IdPattern(id), List((name, id)))
+            case N.LiteralPattern(lit) => 
+              val sLit = lit match {
+                case N.IntLiteral(v) => S.IntLiteral(v)
+                case N.BooleanLiteral(v) => S.BooleanLiteral(v)
+                case N.StringLiteral(v) => S.StringLiteral(v)
+                case N.UnitLiteral() => S.UnitLiteral()
+              }
+              (S.LiteralPattern(sLit), List())
+            case N.CaseClassPattern(constr, args) =>
+              val name = constr.name
+              table.getConstructor(module, name) match {
+                case Some((t,sig)) => 
+                  val (sArgs, l) = args.map(transformPattern).unzip
+                  (S.CaseClassPattern(t, sArgs), l.flatten)
+                case None =>
+                  fatal(s"Constructor $name doesn't exist", expr.position)
+              }
           }
 
           def transformCase(cse: N.MatchCase) = {
