@@ -57,7 +57,7 @@ class ASTConstructorLL1 extends ASTConstructor {
         Not(constructExpr(priority)).setPos(p)
       case Node('Unary ::= (MINUS() :: _), List(Leaf(p), priority)) =>
         Neg(constructExpr(priority)).setPos(p)
-      case Node('Unary ::= ('TopPrio :: _), List(priority)) =>
+      case Node('Unary ::= ('Priority :: _), List(priority)) =>
         constructExpr(priority)
       case Node('Priority ::= List('Literal), List(lit)) =>
         constructLiteral(lit)
