@@ -44,6 +44,25 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
           }
       }
     }
+    
+    def helperQName(mod: String, position: Position, qname: N.QualifiedName, nArgs: Int): S.QualifiedName = 
+        table.getConstructor(mod, qname.name) match {
+          case Some((id, ConstrSig(argTypes, _, _))) =>
+            if (argTypes.size != nArgs) {
+              val constrName = mod + qname.name
+              fatal(s"The constructor $constrName need $nArgs arguments", position)
+            } else id
+          case None => table.getFunction(mod, qname.name) match {
+            case Some((id, FunSig(argTypes, _, _))) =>
+              if(nArgs != argTypes.size) {
+                val funName = mod + qname.name
+                fatal(s"The function $funName need $nArgs arguments", position)
+              } else id
+            case None => 
+              val constrOrFunName = mod + qname.name
+              fatal(s"This constructor or function is never defined: $constrOrFunName", position)
+          }
+        }
 
     // Step 2: Check name uniqueness of definitions in each module
     var definitions : List[(N.ClassOrFunDef, String)] = List()
@@ -135,6 +154,7 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
     def transformExpr(expr: N.Expr)
                      (implicit module: String, names: (Map[String, Identifier], Map[String, Identifier])): S.Expr = {
       val (params, locals) = names
+      
       val res = expr match {
         case N.Match(scrut, cases) =>
           // Returns a transformed pattern along with all bindings
@@ -155,16 +175,11 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
                 case N.UnitLiteral() => S.UnitLiteral()
               }
               (S.LiteralPattern(sLit), List())
-            case N.CaseClassPattern(constr, args) =>
-              val mod = constr.module.getOrElse(module)
-              val name = constr.name
-              table.getConstructor(mod, name) match {
-                case Some((t,sig)) => 
-                  val (sArgs, l) = args.map(transformPattern).unzip
-                  (S.CaseClassPattern(t, sArgs), l.flatten)
-                case None =>
-                  fatal(s"Constructor $name doesn't exist", expr.position)
-              }
+            case caseClass@N.CaseClassPattern(qn@N.QualifiedName(modOpt, _), args) =>
+                val m = modOpt.getOrElse(module)
+                val name = helperQName(m, caseClass.position, qn, args.size)
+                val (sArgs,l) = args.map(transformPattern).unzip
+                (S.CaseClassPattern(name, sArgs).setPos(pat), l.flatten)
           }
 
           def transformCase(cse: N.MatchCase) = {
@@ -195,11 +210,10 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
         case N.Concat(l, r) => S.Concat(transformExpr(l), transformExpr(r))
         case N.Not(e) => S.Not(transformExpr(e))
         case N.Neg(e) => S.Neg(transformExpr(e))
-        case N.Call(qn, args) => 
-          val name = qn.name
-          val func = table.getFunction(qn.module.getOrElse(module), name) 
-          val sQn = func.getOrElse(fatal(s"Function $name is not valid", expr.position)) 
-          S.Call(sQn._1, args.map(transformExpr))
+        case call@N.Call(qname@N.QualifiedName(modOpt, _), args) =>
+          val m = modOpt.getOrElse(module)
+          val id = helperQName(m, call.position, qname, args.size)
+          S.Call(id, args.map(transformExpr))
         case N.Sequence(e1,e2) => S.Sequence(transformExpr(e1), transformExpr(e2))
         case N.Let(df, value, body) =>
           val name = df.name
