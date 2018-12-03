@@ -120,21 +120,38 @@ object TypeChecker extends Pipeline[(Program, SymbolTable), (Program, SymbolTabl
           // from identifiers to types for names bound in the pattern.
           // (This is analogous to `transformPattern` in NameAnalyzer.)
           def handlePattern(pat: Pattern, scrutExpected: Type):
-            (List[Constraint], Map[Identifier, Type]) =
+            (List[Constraint], Map[Identifier, Type]) = pat match
           {
-            ???  // TODO
+            case WildcardPattern() =>
+              (List(), Map())
+            case IdPattern(name) =>
+              (List(), Map(name -> scrutExpected))
+            case LiteralPattern(lit) =>
+              lit match {
+                case IntLiteral(_) => (List(Constraint(IntType, scrutExpected, e.position)), Map())
+                case BooleanLiteral(_) => (List(Constraint(BooleanType, scrutExpected, e.position)), Map())
+                case StringLiteral(_) => (List(Constraint(StringType, scrutExpected, e.position)), Map())
+                case UnitLiteral() => (List(Constraint(UnitType, scrutExpected, e.position)), Map())
+              }
+            case CaseClassPattern(qn, args) =>
+              val sig = table.getConstructor(qn).getOrElse(table.getFunction(qn).get)
+              val types = sig.argTypes
+              val argsts = args.zip(types)
+              val rt = sig.retType
+              val x = argsts.map { case (arg,t) => handlePattern(arg, t) }.unzip
+              (x._1.flatten ++ List(Constraint(rt, scrutExpected, e.position)), x._2.flatten.toMap)
           }
 
           def handleCase(cse: MatchCase, scrutExpected: Type): List[Constraint] = {
             val (patConstraints, moreEnv) = handlePattern(cse.pat, scrutExpected)
-            ???  // TODO
+            genConstraints(cse.expr, expected)(env ++ moreEnv) ::: patConstraints
           }
 
           val st = TypeVariable.fresh()
           genConstraints(scrut, st) ++ cases.flatMap(cse => handleCase(cse, st))
 
-        case _ =>
-          ???  // TODO: Implement the remaining cases
+        case Error(msg) =>
+          genConstraints(msg, StringType) ::: topLevelConstraint(TypeVariable.fresh())
       }
     }
 
