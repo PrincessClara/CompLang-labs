@@ -37,6 +37,10 @@ object TypeChecker extends Pipeline[(Program, SymbolTable), (Program, SymbolTabl
         List(Constraint(found, expected, e.position))
       
       e match {
+        case Variable(name) =>
+          val t = env.get(name).get
+          topLevelConstraint(t)
+        
         case IntLiteral(_) =>
           topLevelConstraint(IntType)
           
@@ -181,7 +185,17 @@ object TypeChecker extends Pipeline[(Program, SymbolTable), (Program, SymbolTabl
         case Constraint(found, expected, pos) :: more =>
           // HINT: You can use the `subst_*` helper above to replace a type variable
           //       by another type in your current set of constraints.
-          ???  // TODO
+          (found, expected) match {
+            case (tpe1@TypeVariable(t1), tpe2@TypeVariable(t2)) =>
+              solveConstraints(subst_*(more, t1, tpe2) ++ List(Constraint(tpe2, tpe2, pos)))
+            case (TypeVariable(t1), t2) =>
+              solveConstraints(subst_*(more, t1, t2))
+            case (t1, TypeVariable(t2)) =>
+              solveConstraints(subst_*(more, t2, t1))
+            case (t1, t2) =>
+              if(t1 != t2) fatal(s"type error: expected: $t2, found: $t1", pos)
+              solveConstraints(more)
+          }
       }
     }
 
