@@ -193,7 +193,7 @@ object TypeChecker extends Pipeline[(Program, SymbolTable), (Program, SymbolTabl
             case (t1, TypeVariable(t2)) =>
               solveConstraints(subst_*(more, t2, t1))
             case (t1, t2) =>
-              if(t1 != t2) fatal(s"type error: expected: $t2, found: $t1", pos)
+              if(t1 != t2) error(s"Type error: expected: $t2, found: $t1", pos)
               solveConstraints(more)
           }
       }
