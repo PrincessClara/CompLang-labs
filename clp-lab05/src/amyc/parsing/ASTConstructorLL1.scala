@@ -69,7 +69,7 @@ class ASTConstructorLL1 extends ASTConstructor {
         ).setPos(t)
       case Node('Priority ::= (ERROR() :: _), List(Leaf(t), _, msg, _)) =>
         Error(constructExpr(msg)).setPos(t)
-      case Node('Priority ::= List(LPAREN() :: _), List(par, rest)) =>
+      case Node('Priority ::= (LPAREN() :: _), List(par, rest)) =>
         constructPriorityParen(par, rest)
       case Node('Priority ::= ('Id :: _), List(id, rest)) =>
         constructPriorityId(id, rest)
