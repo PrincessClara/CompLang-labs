@@ -49,8 +49,34 @@ object CodeGen extends Pipeline[(Program, SymbolTable), Module] {
     // Additional arguments are a mapping from identifiers (parameters and variables) to
     // their index in the wasm local variables, and a LocalsHandler which will generate
     // fresh local slots as required.
-    def cgExpr(expr: Expr)(implicit locals: Map[Identifier, Int], lh: LocalsHandler): Code = {
-      ???  // TODO
+    def cgExpr(expr: Expr)(implicit locals: Map[Identifier, Int], lh: LocalsHandler): Code = expr match {
+      case Variable(name) => GetLocal(locals.get(name).get)
+      case IntLiteral(value) => Const(value)
+      case BooleanLiteral(value) => if(value) Const(1) else Const(0)
+      case StringLiteral(value) => mkString(value)
+      case UnitLiteral() => Const(0)
+      case Plus(l, r) => cgExpr(l) <:> cgExpr(r) <:> Add
+      case Minus(l, r) => cgExpr(l) <:> cgExpr(r) <:> Sub
+      case Times(l, r) => cgExpr(l) <:> cgExpr(r) <:> Mul
+      case Div(l, r) => cgExpr(l) <:> cgExpr(r) <:> Div
+      case Mod(l, r) => cgExpr(l) <:> cgExpr(r) <:> Rem
+      case LessThan(l, r) => cgExpr(l) <:> cgExpr(r) <:> Lt_s
+      case LessEquals(l, r) => cgExpr(l) <:> cgExpr(r) <:> Le_s
+      case And(l, r) => cgExpr(l) <:> cgExpr(r) <:> And
+      case Or(l, r) => cgExpr(l) <:> cgExpr(r) <:> Or
+      case Equals(l, r) => cgExpr(l) <:> cgExpr(r) <:> Eqz
+      case Concat(l, r) => ???
+      case Not(e) => cgExpr(e) <:> If_i32 <:> Const(0) <:> Else <:> Const(1) <:> End
+      case Neg(e) => Const(0) <:> cgExpr(e) <:> Sub
+      case Call(qname, args) => ???
+      case Sequence(e1, e2) => cgExpr(e1) <:> cgExpr(e2)
+      case Let(df, value, body) =>
+        val local = lh.getFreshLocal()
+        val id = df.name
+        cgExpr(value) <:> SetLocal(local) <:> cgExpr(body)(locals ++ Map(id -> local), lh)
+      case Ite(cond, thenn, elze) => ???
+      case Match(scrut, cases) => ???
+      case Error(msg) => ???
     }
 
     Module(
