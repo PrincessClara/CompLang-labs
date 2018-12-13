@@ -198,9 +198,14 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
             }
             case Some(id) => S.Variable(id)
           }
+        case N.IntLiteral(v) => S.IntLiteral(v)
+        case N.BooleanLiteral(v) => S.BooleanLiteral(v)
+        case N.StringLiteral(v) => S.StringLiteral(v)
+        case N.UnitLiteral() => S.UnitLiteral()
         case N.Plus(l, r) => S.Plus(transformExpr(l), transformExpr(r))
         case N.Minus(l, r) => S.Plus(transformExpr(l), transformExpr(r))
         case N.Times(l, r) => S.Plus(transformExpr(l), transformExpr(r))
+        case N.Div(l, r) => S.Div(transformExpr(l), transformExpr(r))
         case N.Mod(l, r) => S.Mod(transformExpr(l), transformExpr(r))
         case N.LessThan(l, r) => S.LessThan(transformExpr(l), transformExpr(r))
         case N.LessEquals(l, r) => S.LessEquals(transformExpr(l), transformExpr(r))
