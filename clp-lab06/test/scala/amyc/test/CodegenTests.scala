@@ -20,7 +20,7 @@ class CodegenTests extends ExecutionTests {
       val input = Console.in.lines.iterator().asScala.toList.mkString("\n")
       val inputS = new ByteArrayInputStream(input.getBytes("UTF-8"))
 
-      val exitCode = s"nodejs wasmout/$fileName" #< inputS ! ProcessLogger(Console.out.println, Console.err.println)
+      val exitCode = s"node wasmout/$fileName" #< inputS ! ProcessLogger(Console.out.println, Console.err.println)
       if (exitCode != 0)
         throw AmycFatalError("Nonzero code returned from nodejs")
     }
