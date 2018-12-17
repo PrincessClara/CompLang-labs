@@ -74,13 +74,20 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
           fatal(s"Two definitions named $name in module $mod", defs.head.position)
         }
         definitions = (defs.head, mod) :: definitions
+      } // TODO seperate abstract and rest
+    }
+    
+    for(d <- definitions) {
+      // Step 3: Discover types and add them to symbol table
+      d match {
+        case (N.AbstractClassDef(name), mod) =>
+          table.addType(mod, name)
+        case _ =>
       }
     }
 
     for(d <- definitions) {
       d match { 
-        // Step 3: Discover types and add them to symbol table
-        case (N.AbstractClassDef(name), mod) => table.addType(mod, name)
         // Step 4: Discover type constructors, add them to table
         case (N.CaseClassDef(name, fields, parent), mod) => 
           table.getType(mod, parent) match {
@@ -88,13 +95,14 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
               val sFields : List[S.Type]= fields.map(transformType(_, mod))
               table.addConstructor(mod, name, sFields, id)
             case None =>
-              fatal(s"Parent name not valid in case class definition $name", d._1.position)
+              fatal(s"Parent name not valid in case class definition $name, $mod.$parent", d._1.position)
           }
         // Step 5: Discover functions signatures, add them to table
         case (N.FunDef(name, params, retType, _), mod) =>
           val sArgs = params.map{x => transformType(x.tt, mod)}
           val sRet = transformType(retType, mod)
           table.addFunction(mod, name, sArgs, sRet)
+        case _ =>
       }
     }
 
@@ -163,8 +171,6 @@ object NameAnalyzer extends Pipeline[N.Program, (S.Program, SymbolTable)] {
           def transformPattern(pat: N.Pattern): (S.Pattern, List[(String, Identifier)]) = pat match {
             case N.WildcardPattern() => (S.WildcardPattern(), List())
             case N.IdPattern(name) => 
-              if (params.contains(name) || locals.contains(name))
-                fatal(s"Name $name not valid", expr.position)
               val id = Identifier.fresh(name)
               (S.IdPattern(id), List((name, id)))
             case N.LiteralPattern(lit) => 

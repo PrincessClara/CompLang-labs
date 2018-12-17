@@ -99,6 +99,7 @@ object TypeChecker extends Pipeline[(Program, SymbolTable), (Program, SymbolTabl
           val ts = sig.argTypes
           val rt = sig.retType
           def checkArgs(args: List[Expr], types: List[Type]): List[Constraint] = args match {
+            case Nil => List()
             case e :: Nil => genConstraints(e, types.head)
             case e :: rest => genConstraints(e, types.head) ::: checkArgs(rest, types.tail)
           }

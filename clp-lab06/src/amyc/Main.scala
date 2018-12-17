@@ -18,7 +18,9 @@ object Main extends MainHelpers {
     val pipeline =
       Lexer andThen
       Parser andThen
+//      treePrinterN("bla")
       NameAnalyzer andThen
+//      treePrinterS("bla")
       TypeChecker andThen
       CodeGen andThen
       CodePrinter

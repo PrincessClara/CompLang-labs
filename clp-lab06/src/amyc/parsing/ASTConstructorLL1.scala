@@ -24,7 +24,7 @@ class ASTConstructorLL1 extends ASTConstructor {
   
   def constructQname1(id: NodeOrLeaf[Token], pTree: NodeOrLeaf[Token]): (QualifiedName, Positioned) = {
     pTree match {
-      case Node('Qname1 ::= _, List(_, nm)) =>
+      case Node('QName1 ::= _, List(_, nm)) =>
         val (mod, pos) = constructName(id)
         (QualifiedName(Some(mod), constructName(nm)._1), pos)
       case Node('QName1 ::= _, List()) =>
@@ -157,13 +157,17 @@ class ASTConstructorLL1 extends ASTConstructor {
 
   def constructPatternId(id: NodeOrLeaf[Token], rest: NodeOrLeaf[Token]): NominalTreeModule.Pattern = {
     rest match {
-      case Node('PatternId ::= _, List(qname1, _, ps, _)) =>
-        val (nm, pos) = constructQname1(id, qname1)
-        val patterns = constructList(ps, constructPattern, hasComma = true)
-        CaseClassPattern(nm, patterns).setPos(pos)
       case Node('PatternId ::= _, List()) =>
         val (nm, pos) = constructName(id)
         IdPattern(nm).setPos(pos)
+      case Node('PatternId ::= _, List(_, qname, _, ps, _)) =>
+        val (nm, pos) = constructQname1(id, qname)
+        val patterns = constructList(ps, constructPattern, hasComma = true)
+        CaseClassPattern(nm, patterns).setPos(pos)
+      case Node('PatternId ::= _, List(_, ps, _)) =>
+        val (nm, pos) = constructName(id)
+        val patterns = constructList(ps, constructPattern, hasComma = true)
+        CaseClassPattern(QualifiedName(None, nm), patterns).setPos(pos)
     }
   }
 
