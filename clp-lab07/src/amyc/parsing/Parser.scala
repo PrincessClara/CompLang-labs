@@ -1,6 +1,7 @@
 package amyc
 package parsing
 
+import scala.util.parsing.combinator.syntactical._
 import grammarcomp.grammar.CFGrammar._
 import grammarcomp.grammar.GrammarDSL._
 import grammarcomp.grammar.GrammarUtils.InLL1
@@ -9,6 +10,54 @@ import grammarcomp.parsing._
 import amyc.utils._
 import ast.NominalTreeModule._
 import Tokens._
+import java.io.File
+
+object SmartParser extends StandardTokenParsers {
+  lexical.reserved += ("object", "abstract", "class", "case", "extends", "def", "int", "String",
+    "Boolean", "Unit", "val", "if", "else", "match", "error", "true", "false")
+  lexical.delimiters += ("(", ")", ":", "=", "{", "}", ",", ".", ";", "+", "-", "*", "/", "%", "<", "<=",
+    "&&", "||", "==", "++", "=>", "!", "_")
+
+  def program: Parser[Program] = rep(moduleDef) ^^ (Program(_))
+  def moduleDef: Parser[ModuleDef] = "object" ~ ident ~ "(" ~ rep(abstractClassDef | caseClassDef | funDef) ~ opt(expr) ~ ")" ~ lexical.EOF ^^ {
+    case "object" ~ id ~ "(" ~ defs ~ expr ~ ")" ~ eof => ModuleDef(id, defs, expr)
+  }
+  def abstractClassDef: Parser[AbstractClassDef] = "abstract" ~ "class" ~ ident ^^
+    { case "abstract" ~ "class" ~ ident => AbstractClassDef(ident) }
+  def caseClassDef: Parser[CaseClassDef] = "case" ~ "class" ~ ident ~ "(" ~ repsep(param, ",") ~ ")" ~ "extends" ~ ident ^^ {
+    case "case" ~ "class" ~ id ~ "(" ~ params ~ ")" ~ "extends" ~ mod => CaseClassDef(id, params.map(_.tt), mod) 
+  }
+  def funDef: Parser[FunDef] = "def" ~ ident ~ "(" ~ repsep(param, ",") ~ ")" ~ ":" ~ tpe ~ "=" ~ "{" ~ expr ~ "}" ^^ {
+    case "def" ~ id ~ "(" ~ params ~ ")" ~ ":" ~ tpe ~ "=" ~ "{" ~ expr ~ "}" => FunDef(id, params, tpe, expr)
+  }
+  def param: Parser[ParamDef] = ident ~ ":" ~ tpe ^^ { case id ~ ":" ~ tpe => ParamDef(id, tpe) }
+  def tpe: Parser[TypeTree] = "int" ^^^ TypeTree(IntType) | "String" ^^^ TypeTree(StringType) | "Boolean" ^^^ TypeTree(BooleanType) | 
+    "Unit" ^^^ TypeTree(UnitType) | qName ^^ { case qn => TypeTree(ClassType(qn)) }
+  def qName: Parser[QualifiedName] = ident ^^ (QualifiedName(None, _)) |
+    ident ~ "." ~ ident ^^ { case mod ~ "." ~ id => QualifiedName(Some(mod), id) }
+  def expr: Parser[Expr] = ident ^^ (Variable(_)) | literal | expr ~ binOp ~ expr ^^ { case a ~ op ~ b => op(a,b) } | 
+    "!" ~> expr ^^ (Not(_)) | "-" ~> expr ^^ (Neg(_)) | qName ~ "(" ~ repsep(expr, ",") ~ ")" ^^ { case qn ~ "(" ~ exprs ~ ")" => Call(qn, exprs) } | 
+    expr ~ ";" ~ expr ^^ { case a ~ ";" ~ b => Sequence(a,b) } | "val" ~ param ~ "=" ~ expr ~ ";" ~ expr ^^ { case "val" ~ par ~ "=" ~ a ~ ";" ~ b => Let(par,a,b) } |
+    "if" ~ "(" ~ expr ~ ")" ~ "{" ~ expr ~ "}" ~ "else" ~ "{" ~ expr ~ "}" ^^ { 
+      case "if" ~ "(" ~ cond ~ ")" ~ "{" ~ thn ~ "}" ~ "else" ~ "{" ~ elze ~ "}" => Ite(cond, thn, elze)
+    } | expr ~ "match" ~ "{" ~ rep1(cse) ~ "}" ^^ { case scrut ~ "match" ~ "{" ~ cases ~ "}" => Match(scrut, cases) } |
+    // TODO "error" ~ "(" ~ expr ~ ")" ^^ { case "error" ~ "(" ~ msg ~ ")" => Error(msg) } |
+    "(" ~> expr <~ ")"
+  def literal: Parser[Literal[_]] = "true" ^^^ BooleanLiteral(true) | "false" ^^^ BooleanLiteral(false) | "(" ~ ")" ^^^ UnitLiteral() | 
+    numericLit ^^ {case nb => IntLiteral(nb.toInt) } | stringLit ^^^ StringLiteral(stringLit.toString())
+  def binOp: Parser[(Expr, Expr) => Expr] = "+" ^^^ Plus | "-" ^^^ Minus | "*" ^^^ Times | "/" ^^^ Div | "%" ^^^ Mod | "<" ^^^ LessThan | 
+    "<=" ^^^ LessEquals | "&&" ^^^ And | "||" ^^^ Or | "==" ^^^ Equals | "++" ^^^ Concat
+  def cse: Parser[MatchCase] = "case" ~ pattern ~ "=>" ~ expr ^^ { case "case" ~ pat ~ "=>" ~ expr => MatchCase(pat, expr) }
+  def pattern: Parser[Pattern] = "_" ^^^ WildcardPattern() | literal ^^ (LiteralPattern(_)) | ident ^^ (IdPattern(_)) | 
+    qName ~ "(" ~ repsep(pattern, ",") ~ ")" ^^ { case qn ~ "(" ~ patterns ~ ")" => CaseClassPattern(qn, patterns) }
+  
+  def run(ctx: Context)(files: List[File]): Program = {
+    val input = files.mkString(lexical.EOF.chars)
+    val tokens = new lexical.Scanner(input)
+    phrase(program)(tokens).get
+  }
+  
+}
 
 // The parser for Amy
 // Absorbs tokens from the Lexer and then uses grammarcomp to generate parse trees.
@@ -35,15 +84,15 @@ object Parser extends Pipeline[Stream[Token], Program] {
     'Type ::= INT() | STRING() | BOOLEAN() | UNIT() | 'QName,
     'QName ::= 'Id | 'Id ~ DOT() ~ 'Id,
     'Expr ::= 'Id | 'Literal | 'Expr ~ 'BinOp ~ 'Expr | BANG() ~ 'Expr | MINUS() ~ 'Expr |
-              'QName ~ LPAREN() ~ 'Args ~ RPAREN() | 'Expr ~ SEMICOLON() ~ 'Expr |
-              VAL() ~ 'Param ~ EQSIGN() ~ 'Expr ~ SEMICOLON() ~ 'Expr |
-              IF() ~ LPAREN() ~ 'Expr ~ RPAREN() ~ LBRACE() ~ 'Expr ~ RBRACE() ~ ELSE() ~ LBRACE() ~ 'Expr ~ RBRACE() |
-              'Expr ~ MATCH() ~ LBRACE() ~ 'Cases ~ RBRACE() |
-              ERROR() ~ LPAREN() ~ 'Expr ~ RPAREN() |
-              LPAREN() ~ 'Expr ~ RPAREN(),
+      'QName ~ LPAREN() ~ 'Args ~ RPAREN() | 'Expr ~ SEMICOLON() ~ 'Expr |
+      VAL() ~ 'Param ~ EQSIGN() ~ 'Expr ~ SEMICOLON() ~ 'Expr |
+      IF() ~ LPAREN() ~ 'Expr ~ RPAREN() ~ LBRACE() ~ 'Expr ~ RBRACE() ~ ELSE() ~ LBRACE() ~ 'Expr ~ RBRACE() |
+      'Expr ~ MATCH() ~ LBRACE() ~ 'Cases ~ RBRACE() |
+      ERROR() ~ LPAREN() ~ 'Expr ~ RPAREN() |
+      LPAREN() ~ 'Expr ~ RPAREN(),
     'Literal ::= TRUE() | FALSE() | LPAREN() ~ RPAREN() | INTLITSENT | STRINGLITSENT,
     'BinOp ::= PLUS() | MINUS() | TIMES() | DIV() | MOD() | LESSTHAN() | LESSEQUALS() |
-               AND() | OR() | EQUALS() | CONCAT(),
+      AND() | OR() | EQUALS() | CONCAT(),
     'Cases ::= 'Case | 'Case ~ 'Cases,
     'Case ::= CASE() ~ 'Pattern ~ RARROW() ~ 'Expr,
     'Pattern ::= UNDERSCORE() | 'Literal | 'Id | 'QName ~ LPAREN() ~ 'Patterns ~ RPAREN(),
@@ -51,8 +100,7 @@ object Parser extends Pipeline[Stream[Token], Program] {
     'PatternList ::= epsilon() | COMMA() ~ 'Pattern ~ 'PatternList,
     'Args ::= epsilon() | 'Expr ~ 'ExprList,
     'ExprList ::= epsilon() | COMMA() ~ 'Expr ~ 'ExprList,
-    'Id ::= IDSENT
-  ))
+    'Id ::= IDSENT))
 
   // TODO: Write a grammar that implements the correct syntax of Amy and is LL1.
   // You can start from the example above and work your way from there.
@@ -96,7 +144,7 @@ object Parser extends Pipeline[Stream[Token], Program] {
     'PriorityId ::= 'QName1 ~ LPAREN() ~ 'Args ~ RPAREN() | epsilon(),
     'Literal ::= TRUE() | FALSE() | INTLITSENT | STRINGLITSENT,
     'BinOp ::= PLUS() | MINUS() | TIMES() | DIV() | MOD() | LESSTHAN() | LESSEQUALS() |
-               AND() | OR() | EQUALS() | CONCAT(),
+      AND() | OR() | EQUALS() | CONCAT(),
     'Cases ::= 'Case ~ 'Cases1,
     'Cases1 ::= epsilon() | 'Cases,
     'Case ::= CASE() ~ 'Pattern ~ RARROW() ~ 'Expr,
@@ -106,8 +154,7 @@ object Parser extends Pipeline[Stream[Token], Program] {
     'PatternList ::= epsilon() | COMMA() ~ 'Pattern ~ 'PatternList,
     'Args ::= epsilon() | 'Expr ~ 'ExprList,
     'ExprList ::= epsilon() | COMMA() ~ 'Expr ~ 'ExprList,
-    'Id ::= IDSENT
-  ))
+    'Id ::= IDSENT))
 
   def run(ctx: Context)(tokens: Stream[Token]): Program = {
     // TODO: Switch to LL1 when you are ready
@@ -120,7 +167,7 @@ object Parser extends Pipeline[Stream[Token], Program] {
 
     GrammarUtils.isLL1WithFeedback(grammar) match {
       case InLL1() =>
-        // info("Grammar is in LL1")
+      // info("Grammar is in LL1")
       case other =>
         warning(other)
     }
@@ -129,7 +176,7 @@ object Parser extends Pipeline[Stream[Token], Program] {
     feedback match {
       case s: Success[Token] =>
         constructor.constructProgram(s.parseTrees.head)
-      case err@LL1Error(_, Some(tok)) =>
+      case err @ LL1Error(_, Some(tok)) =>
         fatal(s"Parsing failed: $err", tok.obj.position)
       case err =>
         fatal(s"Parsing failed: $err")

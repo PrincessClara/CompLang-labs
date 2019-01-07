@@ -21,9 +21,9 @@ object Main extends MainHelpers {
 //      treePrinterN("bla")
       NameAnalyzer andThen
 //      treePrinterS("bla")
-      TypeChecker andThen
-      CodeGen andThen
-      CodePrinter
+      TypeChecker 
+//      CodeGen andThen
+//      CodePrinter
 
     val files = ctx.files.map(new File(_))
 
