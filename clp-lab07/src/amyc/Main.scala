@@ -16,7 +16,6 @@ object Main extends MainHelpers {
   def main(args: Array[String]): Unit = {
     val ctx = parseArgs(args)
     val pipeline =
-      Lexer andThen
       Parser andThen
 //      treePrinterN("bla")
       NameAnalyzer andThen
